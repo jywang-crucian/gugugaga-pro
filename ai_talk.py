@@ -19,6 +19,58 @@ st.set_page_config(
     }
 )
 
+
+# ========== 登录功能 ==========
+def check_password():
+    """密码验证函数"""
+
+    # 从 Secrets 获取密码（安全）
+    if 'ADMIN_PASSWORD' in st.secrets:
+        correct_password = st.secrets['ADMIN_PASSWORD']
+    else:
+        # 默认密码（仅用于测试，部署后务必在 Secrets 中设置）
+        correct_password = "123456"
+        st.warning("⚠️ 请在生产环境配置 ADMIN_PASSWORD 密码！")
+
+    # 初始化登录状态
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+
+    # 如果已经登录，直接返回 True
+    if st.session_state.authenticated:
+        return True
+
+    # 显示登录界面
+    st.markdown("""
+    <div style="text-align: center; padding: 50px;">
+        <h1>🐧 AI Talk</h1>
+        <p style="font-size: 18px; color: #666;">请输入密码继续</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # 创建登录表单
+    with st.form("login_form"):
+        password = st.text_input("密码", type="password", placeholder="请输入访问密码")
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col2:
+            submitted = st.form_submit_button("登录", use_container_width=True)
+
+        if submitted:
+            if password == correct_password:
+                st.session_state.authenticated = True
+                st.rerun()
+            else:
+                st.error("❌ 密码错误！")
+
+    return False
+
+
+# 检查登录状态（放在页面配置之后，其他内容之前）
+if not check_password():
+    st.stop()  # 未登录，停止执行后续代码
+# ========== 登录功能结束 ==========
+
+
 # ---------- 自定义 CSS 美化 ----------
 st.markdown("""
 <style>
