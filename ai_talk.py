@@ -3,6 +3,8 @@ import os
 import json
 from datetime import datetime
 from openai import OpenAI
+import requests
+import base64
 
 # ---------- 页面配置（必须在最前面）----------
 st.set_page_config(
@@ -183,46 +185,80 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ---------- 配置文件路径 ----------
-CHAT_HISTORY_DIR = "resources"
-CHAT_HISTORY_FILE = os.path.join(CHAT_HISTORY_DIR, "chat_history.json")
 
-# 确保 resources 目录存在
-if not os.path.exists(CHAT_HISTORY_DIR):
-    os.makedirs(CHAT_HISTORY_DIR)
-
-
-# ---------- 聊天记录存储函数 ----------
-def load_chat_history():
-    """从 JSON 文件加载聊天记录"""
-    if os.path.exists(CHAT_HISTORY_FILE):
-        try:
-            with open(CHAT_HISTORY_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except (json.JSONDecodeError, IOError) as e:
-            st.error(f"加载聊天记录失败：{e}")
-            return []
-    return []
-
-
-def save_chat_history(messages):
-    """保存聊天记录到 JSON 文件"""
+# ---------- GitHub 存储函数 ----------
+def load_from_github():
+    """从 GitHub 仓库加载聊天记录"""
     try:
-        with open(CHAT_HISTORY_FILE, 'w', encoding='utf-8') as f:
-            json.dump(messages, f, ensure_ascii=False, indent=2)
-        return True
-    except IOError as e:
-        st.error(f"保存聊天记录失败：{e}")
+        # 检查是否配置了 GitHub Secrets
+        if 'GITHUB_TOKEN' not in st.secrets or 'GITHUB_REPO' not in st.secrets:
+            st.info("💡 首次使用，未配置 GitHub 存储，将使用本地会话存储")
+            return []
+
+        url = f"https://api.github.com/repos/{st.secrets['GITHUB_REPO']}/contents/resources/chat_history.json"
+        headers = {
+            "Authorization": f"token {st.secrets['GITHUB_TOKEN']}",
+            "Accept": "application/vnd.github.v3+json"
+        }
+
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            content = response.json()
+            decoded = base64.b64decode(content['content']).decode('utf-8')
+            messages = json.loads(decoded)
+            st.success("✅ 已从 GitHub 加载聊天记录")
+            return messages
+        elif response.status_code == 404:
+            # 文件不存在，返回空列表
+            return []
+        else:
+            st.warning(f"加载失败: {response.status_code}")
+            return []
+    except Exception as e:
+        st.error(f"从 GitHub 加载失败: {e}")
+        return []
+
+
+def save_to_github(messages):
+    """保存聊天记录到 GitHub 仓库"""
+    try:
+        # 检查是否配置了 GitHub Secrets
+        if 'GITHUB_TOKEN' not in st.secrets or 'GITHUB_REPO' not in st.secrets:
+            # 未配置 GitHub，只保存到本地会话
+            return False
+
+        url = f"https://api.github.com/repos/{st.secrets['GITHUB_REPO']}/contents/resources/chat_history.json"
+        headers = {
+            "Authorization": f"token {st.secrets['GITHUB_TOKEN']}",
+            "Accept": "application/vnd.github.v3+json"
+        }
+
+        # 准备要保存的内容
+        content = json.dumps(messages, ensure_ascii=False, indent=2)
+        encoded_content = base64.b64encode(content.encode('utf-8')).decode('utf-8')
+
+        # 尝试获取当前文件的 SHA（用于更新）
+        response = requests.get(url, headers=headers)
+        sha = response.json().get('sha') if response.status_code == 200 else None
+
+        # 提交更新
+        data = {
+            "message": f"更新聊天记录 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            "content": encoded_content,
+            "branch": "master"
+        }
+        if sha:
+            data["sha"] = sha
+
+        response = requests.put(url, headers=headers, json=data)
+        if response.status_code in [200, 201]:
+            return True
+        else:
+            st.error(f"保存失败: {response.status_code} - {response.text}")
+            return False
+    except Exception as e:
+        st.error(f"保存到 GitHub 失败: {e}")
         return False
-
-
-def clear_chat_history():
-    """清空聊天记录文件"""
-    if os.path.exists(CHAT_HISTORY_FILE):
-        try:
-            os.remove(CHAT_HISTORY_FILE)
-        except IOError as e:
-            st.error(f"清空聊天记录失败：{e}")
 
 
 # ---------- 辅助函数 ----------
@@ -231,7 +267,8 @@ def add_message_with_time(role, content):
     message = {
         "role": role,
         "content": content,
-        "timestamp": datetime.now().strftime("%H:%M:%S")
+        "timestamp": datetime.now().strftime("%H:%M:%S"),
+        "full_time": datetime.now().isoformat()
     }
     return message
 
@@ -258,13 +295,21 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # 显示 Logo（如果文件存在）
-logo_path = os.path.join(CHAT_HISTORY_DIR, "logo.png")
+logo_path = "resources/logo.png"
 if os.path.exists(logo_path):
     st.logo(logo_path)
 
 # ---------- 侧边栏：聊天记录管理 ----------
 with st.sidebar:
     st.markdown("### 📊 统计信息")
+
+    # 显示 GitHub 存储状态
+    if 'GITHUB_TOKEN' in st.secrets and 'GITHUB_REPO' in st.secrets:
+        st.success("💾 GitHub 存储已启用")
+    else:
+        st.warning("⚠️ GitHub 存储未配置\n聊天记录仅保存在当前会话")
+
+    st.divider()
 
     # 显示消息统计
     if st.session_state.get("messages"):
@@ -284,18 +329,29 @@ with st.sidebar:
 
     st.markdown("### 🛠️ 聊天管理")
 
+    # 手动保存按钮
+    if st.button("💾 手动保存到 GitHub", use_container_width=True):
+        if st.session_state.messages:
+            if save_to_github(st.session_state.messages):
+                st.success("✅ 保存成功！")
+            else:
+                st.error("❌ 保存失败，请检查配置")
+        else:
+            st.warning("暂无消息可保存")
+
     # 清空聊天记录按钮
     if st.button("🗑️ 清空聊天记录", use_container_width=True, type="primary"):
-        clear_chat_history()
         st.session_state.messages = []
         st.session_state.has_welcomed = False
+        # 清空 GitHub 上的记录
+        save_to_github([])
         st.rerun()
 
     # 导出聊天记录按钮
     if st.button("💾 导出聊天记录", use_container_width=True):
         if st.session_state.messages:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            export_file = os.path.join(CHAT_HISTORY_DIR, f"chat_export_{timestamp}.json")
+            export_file = f"chat_export_{timestamp}.json"
             try:
                 with open(export_file, 'w', encoding='utf-8') as f:
                     json.dump({
@@ -303,8 +359,14 @@ with st.sidebar:
                         "total_messages": len(st.session_state.messages),
                         "messages": st.session_state.messages
                     }, f, ensure_ascii=False, indent=2)
-                st.success(f"✅ 已导出到：{export_file}")
-            except IOError as e:
+                with open(export_file, 'r', encoding='utf-8') as f:
+                    st.download_button(
+                        label="📥 点击下载",
+                        data=f.read(),
+                        file_name=export_file,
+                        mime="application/json"
+                    )
+            except Exception as e:
                 st.error(f"导出失败：{e}")
         else:
             st.warning("暂无聊天记录可导出")
@@ -315,20 +377,23 @@ with st.sidebar:
     st.markdown("### 💡 使用提示")
     st.info("""
     - 🐧 小企鹅只会说"咕咕""嘎嘎"
-    - 📝 消息会自动保存
-    - 🎨 支持导出聊天记录
-    - 🔄 页面刷新不影响历史
+    - 💾 配置 GitHub 后记录永久保存
+    - 🔄 重新部署后记录自动恢复
+    - 📝 支持导出聊天记录
     """)
 
     st.divider()
-    st.caption(f"📁 聊天记录位置：\n`{CHAT_HISTORY_FILE}`")
+    if 'GITHUB_REPO' in st.secrets:
+        st.caption(f"📁 存储位置：\n`{st.secrets['GITHUB_REPO']}`")
 
 # ---------- 会话状态初始化 ----------
 if "messages" not in st.session_state:
-    loaded_messages = load_chat_history()
-    st.session_state.messages = loaded_messages if loaded_messages else []
-
-if "has_welcomed" not in st.session_state:
+    # 尝试从 GitHub 加载
+    loaded_messages = load_from_github()
+    if loaded_messages:
+        st.session_state.messages = loaded_messages
+    else:
+        st.session_state.messages = []
     st.session_state.has_welcomed = len(st.session_state.messages) > 0
 
 # ---------- 渲染聊天记录（带时间戳）----------
@@ -342,12 +407,12 @@ if not st.session_state.has_welcomed and len(st.session_state.messages) == 0:
 
     with st.chat_message("assistant"):
         st.write(welcome_msg)
-        # 打字机效果（模拟）
         st.markdown('<div class="message-time">' + welcome_message["timestamp"] + '</div>', unsafe_allow_html=True)
 
     st.session_state.messages.append(welcome_message)
     st.session_state.has_welcomed = True
-    save_chat_history(st.session_state.messages)
+    # 保存到 GitHub
+    save_to_github(st.session_state.messages)
 
 # ---------- 获取用户输入 ----------
 prompt = st.chat_input("🐧 在这里输入消息...")
@@ -358,13 +423,24 @@ if prompt and prompt.strip():
     user_message = add_message_with_time("user", prompt)
     display_message(user_message)
     st.session_state.messages.append(user_message)
-    save_chat_history(st.session_state.messages)
+    # 保存到 GitHub
+    save_to_github(st.session_state.messages)
 
     # 显示加载动画
     with st.spinner("🐧 咕咕嘎嘎思考中..."):
+        # 获取 API Key
+        if hasattr(st, 'secrets') and 'DEEPSEEK_API_KEY' in st.secrets:
+            api_key = st.secrets["DEEPSEEK_API_KEY"]
+        else:
+            api_key = os.environ.get('DEEPSEEK_API_KEY')
+
+        if not api_key:
+            st.error("❌ 未找到 API Key！请在 Streamlit Cloud 的 Secrets 中设置 DEEPSEEK_API_KEY")
+            st.stop()
+
         # 调用 API
         client = OpenAI(
-            api_key=os.environ.get('DEEPSEEK_API_KEY'),
+            api_key=api_key,
             base_url="https://api.deepseek.com"
         )
 
@@ -415,7 +491,8 @@ if prompt and prompt.strip():
             st.markdown(f'<div class="message-time">{assistant_message["timestamp"]}</div>', unsafe_allow_html=True)
 
         st.session_state.messages.append(assistant_message)
-        save_chat_history(st.session_state.messages)
+        # 保存到 GitHub
+        save_to_github(st.session_state.messages)
 
         # 刷新页面
         st.rerun()

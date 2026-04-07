@@ -4,7 +4,186 @@ import json
 from datetime import datetime
 from openai import OpenAI
 
-# 配置文件路径
+# ---------- 页面配置（必须在最前面）----------
+st.set_page_config(
+    page_title="AI Talk - 咕咕嘎嘎小企鹅",
+    page_icon="🐧",
+    layout="wide",
+    initial_sidebar_state="expanded",
+    menu_items={
+        'Get Help': 'https://github.com/your-repo',
+        'Report a bug': "https://github.com/your-repo/issues",
+        'About': "# AI Talk\n🐧 一只会聊天的小企鹅"
+    }
+)
+
+# ---------- 自定义 CSS 美化 ----------
+st.markdown("""
+<style>
+    /* 导入可爱字体 */
+    @import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;600;700&display=swap');
+
+    /* 全局样式 */
+    .stApp {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        font-family: 'Quicksand', sans-serif;
+    }
+
+    /* 主容器背景 */
+    .main > div {
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 20px;
+        padding: 20px;
+        margin: 10px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+    }
+
+    /* 标题样式 */
+    h1 {
+        text-align: center;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        animation: bounce 2s ease-in-out infinite;
+        font-size: 3em !important;
+        margin-bottom: 0 !important;
+    }
+
+    /* 企鹅跳动动画 */
+    @keyframes bounce {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-10px); }
+    }
+
+    /* 自定义聊天气泡 */
+    .stChatMessage {
+        animation: fadeIn 0.3s ease-in;
+        border-radius: 15px !important;
+        margin-bottom: 10px !important;
+    }
+
+    @keyframes fadeIn {
+        from { 
+            opacity: 0; 
+            transform: translateY(20px);
+        }
+        to { 
+            opacity: 1; 
+            transform: translateY(0);
+        }
+    }
+
+    /* 用户消息样式 */
+    [data-testid="stChatMessage"][data-testid="user"] {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
+
+    /* 助手消息样式 */
+    [data-testid="stChatMessage"][data-testid="assistant"] {
+        background: #f0f2f6;
+        border: 2px solid #667eea;
+    }
+
+    /* 输入框美化 */
+    .stChatInput input {
+        border-radius: 25px !important;
+        border: 2px solid #667eea !important;
+        padding: 10px 20px !important;
+        font-size: 16px !important;
+        transition: all 0.3s ease;
+    }
+
+    .stChatInput input:focus {
+        border-color: #764ba2 !important;
+        box-shadow: 0 0 10px rgba(118, 75, 162, 0.3);
+        transform: scale(1.02);
+    }
+
+    /* 侧边栏样式 */
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
+
+    [data-testid="stSidebar"] .stMarkdown {
+        color: white;
+    }
+
+    /* 按钮样式 */
+    .stButton button {
+        border-radius: 20px;
+        background: white;
+        color: #667eea;
+        border: none;
+        transition: all 0.3s ease;
+        font-weight: bold;
+    }
+
+    .stButton button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        color: #764ba2;
+    }
+
+    /* 加载动画 */
+    .stSpinner > div {
+        border-top-color: #667eea !important;
+    }
+
+    /* 滚动条美化 */
+    ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 10px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 10px;
+    }
+
+    /* 打字光标效果 */
+    @keyframes blink {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0; }
+    }
+
+    .typing-cursor {
+        display: inline-block;
+        width: 2px;
+        height: 1em;
+        background-color: #667eea;
+        animation: blink 1s infinite;
+        margin-left: 2px;
+    }
+
+    /* 消息时间戳样式 */
+    .message-time {
+        font-size: 10px;
+        color: #999;
+        margin-top: 5px;
+        text-align: right;
+    }
+
+    /* 企鹅表情动画 */
+    .penguin-emoji {
+        display: inline-block;
+        animation: wave 1s ease-in-out infinite;
+    }
+
+    @keyframes wave {
+        0%, 100% { transform: rotate(0deg); }
+        50% { transform: rotate(20deg); }
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# ---------- 配置文件路径 ----------
 CHAT_HISTORY_DIR = "resources"
 CHAT_HISTORY_FILE = os.path.join(CHAT_HISTORY_DIR, "chat_history.json")
 
@@ -46,16 +225,37 @@ def clear_chat_history():
             st.error(f"清空聊天记录失败：{e}")
 
 
-# ---------- 页面配置 ----------
-st.set_page_config(
-    page_title="AI Talk",
-    page_icon="🐧",
-    layout="wide",
-    initial_sidebar_state="expanded",
-    menu_items={}
-)
+# ---------- 辅助函数 ----------
+def add_message_with_time(role, content):
+    """添加带时间戳的消息"""
+    message = {
+        "role": role,
+        "content": content,
+        "timestamp": datetime.now().strftime("%H:%M:%S")
+    }
+    return message
 
-st.title("AI Talk")
+
+def display_message(message):
+    """显示带时间戳的消息"""
+    with st.chat_message(message["role"]):
+        st.write(message["content"])
+        st.markdown(f'<div class="message-time">{message.get("timestamp", "")}</div>', unsafe_allow_html=True)
+
+
+# ---------- 标题和副标题 ----------
+st.markdown("""
+<div style="text-align: center; padding: 20px;">
+    <h1>
+        <span class="penguin-emoji">🐧</span> 
+        AI Talk 
+        <span class="penguin-emoji">🐧</span>
+    </h1>
+    <p style="font-size: 18px; color: #666; margin-top: 10px;">
+        一只摇摇晃晃的小企鹅，咕咕嘎嘎陪你聊天~
+    </p>
+</div>
+""", unsafe_allow_html=True)
 
 # 显示 Logo（如果文件存在）
 logo_path = os.path.join(CHAT_HISTORY_DIR, "logo.png")
@@ -64,10 +264,28 @@ if os.path.exists(logo_path):
 
 # ---------- 侧边栏：聊天记录管理 ----------
 with st.sidebar:
-    st.header("📁 聊天记录管理")
+    st.markdown("### 📊 统计信息")
+
+    # 显示消息统计
+    if st.session_state.get("messages"):
+        total_msgs = len(st.session_state.messages)
+        user_msgs = sum(1 for m in st.session_state.messages if m["role"] == "user")
+        assistant_msgs = sum(1 for m in st.session_state.messages if m["role"] == "assistant")
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("总消息", total_msgs)
+        with col2:
+            st.metric("👤 用户", user_msgs)
+        with col3:
+            st.metric("🐧 企鹅", assistant_msgs)
+
+    st.divider()
+
+    st.markdown("### 🛠️ 聊天管理")
 
     # 清空聊天记录按钮
-    if st.button("🗑️ 清空当前聊天记录", use_container_width=True):
+    if st.button("🗑️ 清空聊天记录", use_container_width=True, type="primary"):
         clear_chat_history()
         st.session_state.messages = []
         st.session_state.has_welcomed = False
@@ -76,69 +294,85 @@ with st.sidebar:
     # 导出聊天记录按钮
     if st.button("💾 导出聊天记录", use_container_width=True):
         if st.session_state.messages:
-            # 创建带时间戳的导出文件
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             export_file = os.path.join(CHAT_HISTORY_DIR, f"chat_export_{timestamp}.json")
             try:
                 with open(export_file, 'w', encoding='utf-8') as f:
                     json.dump({
                         "export_time": timestamp,
+                        "total_messages": len(st.session_state.messages),
                         "messages": st.session_state.messages
                     }, f, ensure_ascii=False, indent=2)
-                st.success(f"已导出到：{export_file}")
+                st.success(f"✅ 已导出到：{export_file}")
             except IOError as e:
                 st.error(f"导出失败：{e}")
         else:
             st.warning("暂无聊天记录可导出")
 
     st.divider()
-    st.caption(f"聊天记录保存位置：{CHAT_HISTORY_FILE}")
+
+    # 使用提示
+    st.markdown("### 💡 使用提示")
+    st.info("""
+    - 🐧 小企鹅只会说"咕咕""嘎嘎"
+    - 📝 消息会自动保存
+    - 🎨 支持导出聊天记录
+    - 🔄 页面刷新不影响历史
+    """)
+
+    st.divider()
+    st.caption(f"📁 聊天记录位置：\n`{CHAT_HISTORY_FILE}`")
 
 # ---------- 会话状态初始化 ----------
-# 尝试从文件加载聊天记录
 if "messages" not in st.session_state:
     loaded_messages = load_chat_history()
     st.session_state.messages = loaded_messages if loaded_messages else []
 
-# 标记是否已显示欢迎消息（仅在无历史消息时显示）
 if "has_welcomed" not in st.session_state:
     st.session_state.has_welcomed = len(st.session_state.messages) > 0
 
-# ---------- 渲染聊天记录 ----------
+# ---------- 渲染聊天记录（带时间戳）----------
 for message in st.session_state.messages:
-    if message["role"] == "user":
-        st.chat_message("user").write(message["content"])
-    else:
-        st.chat_message("assistant").write(message["content"])
+    display_message(message)
 
-# ---------- 显示欢迎消息（仅首次加载且无消息时）----------
+# ---------- 显示欢迎消息 ----------
 if not st.session_state.has_welcomed and len(st.session_state.messages) == 0:
-    welcome_msg = "（摇摇晃晃地走过来）咕咕嘎嘎！🐧"
-    st.chat_message("assistant").write(welcome_msg)
-    st.session_state.messages.append({"role": "assistant", "content": welcome_msg})
+    welcome_msg = "（摇摇晃晃地走过来）咕咕嘎嘎！🐧\n\n我是小企鹅管理员，虽然不太会说话，但我会认真听你说哦~"
+    welcome_message = add_message_with_time("assistant", welcome_msg)
+
+    with st.chat_message("assistant"):
+        st.write(welcome_msg)
+        # 打字机效果（模拟）
+        st.markdown('<div class="message-time">' + welcome_message["timestamp"] + '</div>', unsafe_allow_html=True)
+
+    st.session_state.messages.append(welcome_message)
     st.session_state.has_welcomed = True
-    # 保存欢迎消息到文件
     save_chat_history(st.session_state.messages)
 
 # ---------- 获取用户输入 ----------
-prompt = st.chat_input("请输入要发送的消息：")
+prompt = st.chat_input("🐧 在这里输入消息...")
 
-# ---------- 处理用户有效输入 ----------
+# ---------- 处理用户输入 ----------
 if prompt and prompt.strip():
-    # 1. 显示用户消息并保存到会话历史
-    st.chat_message("user").write(prompt)
-    st.session_state.messages.append({"role": "user", "content": prompt})
-
-    # 实时保存用户消息
+    # 添加用户消息
+    user_message = add_message_with_time("user", prompt)
+    display_message(user_message)
+    st.session_state.messages.append(user_message)
     save_chat_history(st.session_state.messages)
 
-    # 2. 显示加载动画
-    with st.spinner("咕咕嘎嘎思考中..."):
-        # 3. 调用 OpenAI API
+    # 显示加载动画
+    with st.spinner("🐧 咕咕嘎嘎思考中..."):
+        # 调用 API
         client = OpenAI(
             api_key=os.environ.get('DEEPSEEK_API_KEY'),
             base_url="https://api.deepseek.com"
         )
+
+        # 准备历史消息（移除时间戳字段）
+        api_messages = [
+            {"role": msg["role"], "content": msg["content"]}
+            for msg in st.session_state.messages
+        ]
 
         response = client.chat.completions.create(
             model="deepseek-chat",
@@ -167,18 +401,28 @@ if prompt and prompt.strip():
 
 用户：你会说话吗？
 你：（认真点头）嘎。（又立刻摇头）咕嘎嘎……（意思是不太会)'''},
-                *st.session_state.messages
+                *api_messages
             ],
             stream=False
         )
 
-        # 4. 提取并显示助手回复
+        # 添加助手回复
         assistant_response = response.choices[0].message.content
-        st.chat_message("assistant").write(assistant_response)
-        st.session_state.messages.append({"role": "assistant", "content": assistant_response})
+        assistant_message = add_message_with_time("assistant", assistant_response)
 
-        # 5. 保存完整对话（包含助手回复）到文件
+        with st.chat_message("assistant"):
+            st.write(assistant_response)
+            st.markdown(f'<div class="message-time">{assistant_message["timestamp"]}</div>', unsafe_allow_html=True)
+
+        st.session_state.messages.append(assistant_message)
         save_chat_history(st.session_state.messages)
 
-        # 6. 刷新界面
+        # 刷新页面
         st.rerun()
+
+# ---------- 页脚 ----------
+st.markdown("""
+<div style="text-align: center; padding: 20px; margin-top: 30px; color: #999; font-size: 12px;">
+    <p>🐧 AI Talk | 小企鹅管理员 | 咕咕嘎嘎~</p>
+</div>
+""", unsafe_allow_html=True)
