@@ -24,19 +24,18 @@ st.set_page_config(
 def check_password():
     """密码验证函数"""
 
-    # 从 Secrets 获取密码（安全）
+    # 从 Secrets 获取密码
     if 'ADMIN_PASSWORD' in st.secrets:
         correct_password = st.secrets['ADMIN_PASSWORD']
     else:
-        # 默认密码（仅用于测试，部署后务必在 Secrets 中设置）
         correct_password = "123456"
-        st.warning("⚠️ 请在生产环境配置 ADMIN_PASSWORD 密码！")
+        st.warning("⚠️ 请在 Secrets 中配置 ADMIN_PASSWORD")
 
     # 初始化登录状态
     if "authenticated" not in st.session_state:
         st.session_state.authenticated = False
 
-    # 如果已经登录，直接返回 True
+    # 已登录则放行
     if st.session_state.authenticated:
         return True
 
@@ -48,7 +47,7 @@ def check_password():
     </div>
     """, unsafe_allow_html=True)
 
-    # 创建登录表单
+    # 登录表单
     with st.form("login_form"):
         password = st.text_input("密码", type="password", placeholder="请输入访问密码")
         col1, col2, col3 = st.columns([1, 1, 1])
@@ -65,11 +64,10 @@ def check_password():
     return False
 
 
-# 检查登录状态（放在页面配置之后，其他内容之前）
+# 执行登录检查
 if not check_password():
-    st.stop()  # 未登录，停止执行后续代码
+    st.stop()
 # ========== 登录功能结束 ==========
-
 
 # ---------- 自定义 CSS 美化 ----------
 st.markdown("""
@@ -201,21 +199,6 @@ st.markdown("""
         border-radius: 10px;
     }
 
-    /* 打字光标效果 */
-    @keyframes blink {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0; }
-    }
-
-    .typing-cursor {
-        display: inline-block;
-        width: 2px;
-        height: 1em;
-        background-color: #667eea;
-        animation: blink 1s infinite;
-        margin-left: 2px;
-    }
-
     /* 消息时间戳样式 */
     .message-time {
         font-size: 10px;
@@ -242,12 +225,11 @@ st.markdown("""
 def load_from_github():
     """从 GitHub 仓库加载聊天记录"""
     try:
-        # 检查是否配置了 GitHub Secrets
         if 'GITHUB_TOKEN' not in st.secrets or 'GITHUB_REPO' not in st.secrets:
-            st.info("💡 首次使用，未配置 GitHub 存储，将使用本地会话存储")
             return []
 
-        url = f"https://api.github.com/repos/{st.secrets['GITHUB_REPO']}/contents/resources/chat_history.json"
+        repo = st.secrets['GITHUB_REPO']
+        url = f"https://api.github.com/repos/{repo}/contents/resources/chat_history.json"
         headers = {
             "Authorization": f"token {st.secrets['GITHUB_TOKEN']}",
             "Accept": "application/vnd.github.v3+json"
@@ -257,22 +239,15 @@ def load_from_github():
         if response.status_code == 200:
             content = response.json()
             decoded = base64.b64decode(content['content']).decode('utf-8')
-            messages = json.loads(decoded)
-            st.success("✅ 已从 GitHub 加载聊天记录")
-            return messages
-        elif response.status_code == 404:
-            # 文件不存在，返回空列表
-            return []
-        else:
-            st.warning(f"加载失败: {response.status_code}")
-            return []
+            return json.loads(decoded)
+        return []
     except Exception as e:
         st.error(f"从 GitHub 加载失败: {e}")
         return []
 
 
 def save_to_github(messages):
-    """保存聊天记录到 GitHub（修复 sha 问题）"""
+    """保存聊天记录到 GitHub 仓库"""
     try:
         if 'GITHUB_TOKEN' not in st.secrets or 'GITHUB_REPO' not in st.secrets:
             return False
@@ -288,43 +263,32 @@ def save_to_github(messages):
         content = json.dumps(messages, ensure_ascii=False, indent=2)
         encoded_content = base64.b64encode(content.encode('utf-8')).decode('utf-8')
 
-        # 【关键】必须先获取现有文件的 sha
+        # 先检查文件是否存在
         get_response = requests.get(url, headers=headers)
 
+        data = {
+            "message": f"更新聊天记录 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            "content": encoded_content,
+            "branch": "main"  # ← 关键修改：改为 main
+        }
+
         if get_response.status_code == 200:
-            # 文件存在，获取 sha
+            # 文件存在，需要提供 sha
             file_info = get_response.json()
-            sha = file_info['sha']  # 必须获取到 sha
-
-            # 使用 sha 更新
-            data = {
-                "message": f"更新聊天记录 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-                "content": encoded_content,
-                "sha": sha,  # 【关键】必须提供 sha
-                "branch": "master"
-            }
-
+            data["sha"] = file_info["sha"]
             response = requests.put(url, headers=headers, json=data)
-
-            if response.status_code in [200, 201]:
-                return True
-            else:
-                st.error(f"更新失败: {response.status_code} - {response.text}")
-                return False
+        elif get_response.status_code == 404:
+            # 文件不存在，直接创建
+            response = requests.put(url, headers=headers, json=data)
         else:
-            # 文件不存在，创建新文件（不需要 sha）
-            data = {
-                "message": f"创建聊天记录 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-                "content": encoded_content,
-                "branch": "master"
-            }
-            response = requests.put(url, headers=headers, json=data)
+            st.error(f"检查文件失败: {get_response.status_code}")
+            return False
 
-            if response.status_code in [200, 201]:
-                return True
-            else:
-                st.error(f"创建失败: {response.status_code} - {response.text}")
-                return False
+        if response.status_code in [200, 201]:
+            return True
+        else:
+            st.error(f"保存失败: {response.status_code}\n{response.text}")
+            return False
 
     except Exception as e:
         st.error(f"保存失败: {e}")
@@ -413,7 +377,6 @@ with st.sidebar:
     if st.button("🗑️ 清空聊天记录", use_container_width=True, type="primary"):
         st.session_state.messages = []
         st.session_state.has_welcomed = False
-        # 清空 GitHub 上的记录
         save_to_github([])
         st.rerun()
 
@@ -443,7 +406,6 @@ with st.sidebar:
 
     st.divider()
 
-    # 使用提示
     st.markdown("### 💡 使用提示")
     st.info("""
     - 🐧 小企鹅只会说"咕咕""嘎嘎"
@@ -458,7 +420,6 @@ with st.sidebar:
 
 # ---------- 会话状态初始化 ----------
 if "messages" not in st.session_state:
-    # 尝试从 GitHub 加载
     loaded_messages = load_from_github()
     if loaded_messages:
         st.session_state.messages = loaded_messages
@@ -481,7 +442,6 @@ if not st.session_state.has_welcomed and len(st.session_state.messages) == 0:
 
     st.session_state.messages.append(welcome_message)
     st.session_state.has_welcomed = True
-    # 保存到 GitHub
     save_to_github(st.session_state.messages)
 
 # ---------- 获取用户输入 ----------
@@ -493,7 +453,6 @@ if prompt and prompt.strip():
     user_message = add_message_with_time("user", prompt)
     display_message(user_message)
     st.session_state.messages.append(user_message)
-    # 保存到 GitHub
     save_to_github(st.session_state.messages)
 
     # 显示加载动画
@@ -561,10 +520,8 @@ if prompt and prompt.strip():
             st.markdown(f'<div class="message-time">{assistant_message["timestamp"]}</div>', unsafe_allow_html=True)
 
         st.session_state.messages.append(assistant_message)
-        # 保存到 GitHub
         save_to_github(st.session_state.messages)
 
-        # 刷新页面
         st.rerun()
 
 # ---------- 页脚 ----------
