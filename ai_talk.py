@@ -272,62 +272,62 @@ def load_from_github():
 
 
 def save_to_github(messages):
-    """保存聊天记录到 GitHub 仓库（最简化修复版）"""
+    """保存聊天记录到 GitHub（修复 sha 问题）"""
     try:
-        # 1. 基础配置检查
         if 'GITHUB_TOKEN' not in st.secrets or 'GITHUB_REPO' not in st.secrets:
             return False
 
         repo = st.secrets['GITHUB_REPO']
-        # 确保文件路径正确
-        file_path = "resources/chat_history.json"
-        url = f"https://api.github.com/repos/{repo}/contents/{file_path}"
+        url = f"https://api.github.com/repos/{repo}/contents/resources/chat_history.json"
         headers = {
             "Authorization": f"token {st.secrets['GITHUB_TOKEN']}",
             "Accept": "application/vnd.github.v3+json"
         }
 
-        # 2. 准备要保存的内容
+        # 准备内容
         content = json.dumps(messages, ensure_ascii=False, indent=2)
         encoded_content = base64.b64encode(content.encode('utf-8')).decode('utf-8')
 
-        # 3. 【关键步骤】先获取远程文件的最新信息和 SHA
+        # 【关键】必须先获取现有文件的 sha
         get_response = requests.get(url, headers=headers)
+
         if get_response.status_code == 200:
-            # 文件存在，获取其 SHA
+            # 文件存在，获取 sha
             file_info = get_response.json()
-            sha = file_info['sha']  # 直接取值，一定会存在
+            sha = file_info['sha']  # 必须获取到 sha
+
+            # 使用 sha 更新
+            data = {
+                "message": f"更新聊天记录 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                "content": encoded_content,
+                "sha": sha,  # 【关键】必须提供 sha
+                "branch": "master"
+            }
+
+            response = requests.put(url, headers=headers, json=data)
+
+            if response.status_code in [200, 201]:
+                return True
+            else:
+                st.error(f"更新失败: {response.status_code} - {response.text}")
+                return False
         else:
-            # 文件不存在（理论上不应发生，但做个兜底）
-            sha = None
+            # 文件不存在，创建新文件（不需要 sha）
+            data = {
+                "message": f"创建聊天记录 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                "content": encoded_content,
+                "branch": "master"
+            }
+            response = requests.put(url, headers=headers, json=data)
 
-        # 4. 构建更新请求
-        data = {
-            "message": f"更新聊天记录 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-            "content": encoded_content,
-            "branch": "master"  # 确认您的分支是 master 还是 main
-        }
-        if sha:
-            data["sha"] = sha  # 【关键】只有提供了 sha，才能更新已有文件
-
-        # 5. 发送更新请求
-        put_response = requests.put(url, headers=headers, json=data)
-
-        # 6. 检查最终结果
-        if put_response.status_code in [200, 201]:
-            return True
-        else:
-            st.error(f"GitHub 保存失败: {put_response.status_code}\n{put_response.text}")
-            return False
+            if response.status_code in [200, 201]:
+                return True
+            else:
+                st.error(f"创建失败: {response.status_code} - {response.text}")
+                return False
 
     except Exception as e:
-        st.error(f"保存到 GitHub 时发生异常: {e}")
-        return False
-
-    except Exception as e:
-        st.error(f"异常: {e}")
-        import traceback
-        st.code(traceback.format_exc())
+        st.error(f"保存失败: {e}")
         return False
 
 
