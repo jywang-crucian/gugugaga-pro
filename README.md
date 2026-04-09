@@ -2,6 +2,13 @@
 
 基于 DeepSeek 的 Windows 桌面聊天应用（`tkinter`），不依赖 Streamlit。
 
+## 最新版本
+
+- 新增 API Key 图形化配置（首次启动引导 + 设置菜单修改）
+- 新增图标构建链路（`resources/logo.png` -> `resources/app.ico`）
+- 打包脚本和安装脚本支持自定义应用图标
+- 聊天请求改为后台线程，避免 UI 卡顿
+
 ## 功能
 
 - 桌面聊天窗口（输入、发送、清空）
@@ -87,3 +94,4 @@ build.bat
 - 启动后无法回复：检查 `DEEPSEEK_API_KEY` 是否生效
 - 聊天记录异常：删除 `resources/chat_history.json` 后重启
 - 需要更换应用图标：替换 `resources/logo.png` 后重新执行 `build.bat`
+- `resources/app.ico` 为自动生成文件，如缺失可直接重新运行 `build.bat`

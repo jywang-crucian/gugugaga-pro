@@ -10,6 +10,7 @@ env/
 # Local runtime data
 resources/chat_history.json
 resources/config.json
+resources/app.ico
 
 # Build artifacts
 build/
