@@ -31,8 +31,21 @@ if exist "build" rmdir /s /q "build"
 if exist "dist" rmdir /s /q "dist"
 if exist "AI-Talk-Desktop.spec" del /q "AI-Talk-Desktop.spec"
 
-echo [4/4] Building Windows executable...
-pyinstaller --noconfirm --onefile --windowed --name "AI-Talk-Desktop" app_desktop.py
+set "ICON_ARG="
+if exist "resources\logo.png" (
+  echo [4/5] Generating icon from resources\logo.png...
+  python make_icon.py >nul 2>nul
+  if exist "resources\app.ico" (
+    set "ICON_ARG=--icon resources\app.ico"
+  ) else (
+    echo [WARN] Icon generation failed, building without custom icon.
+  )
+) else (
+  echo [WARN] resources\logo.png not found, building without custom icon.
+)
+
+echo [5/5] Building Windows executable...
+pyinstaller --noconfirm --onefile --windowed --name "AI-Talk-Desktop" %ICON_ARG% app_desktop.py
 if errorlevel 1 (
   echo [ERROR] Build failed.
   pause

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from openai import OpenAI
+from config_store import get_saved_api_key
 
 
 SYSTEM_PROMPT = """
@@ -28,7 +29,9 @@ def get_api_key() -> str:
     """Read API key from environment."""
     api_key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
     if not api_key:
-        raise ValueError("Missing DEEPSEEK_API_KEY environment variable.")
+        api_key = get_saved_api_key()
+    if not api_key:
+        raise ValueError("Missing DEEPSEEK_API_KEY. Configure it in app settings or environment variables.")
     return api_key
 
 

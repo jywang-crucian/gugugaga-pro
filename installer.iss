@@ -5,6 +5,7 @@
 #define AppVersion "1.0.0"
 #define AppPublisher "AI Talk Team"
 #define AppExeName "AI-Talk-Desktop.exe"
+#define AppIconPath "resources\app.ico"
 
 [Setup]
 AppId={{D9B10B4D-96CB-4C8A-B56E-EACD69861A2C}
@@ -19,6 +20,10 @@ OutputBaseFilename=AI-Talk-Desktop-Setup
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
+UninstallDisplayIcon={app}\{#AppExeName}
+#ifexist "{#AppIconPath}"
+SetupIconFile={#AppIconPath}
+#endif
 
 [Languages]
 Name: "chinesesimp"; MessagesFile: "compiler:Default.isl"

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import threading
+import os
 import tkinter as tk
-from tkinter import messagebox, scrolledtext
+from pathlib import Path
+from tkinter import messagebox, scrolledtext, simpledialog
 
 from chat_service import ask_deepseek
+from config_store import get_saved_api_key, set_saved_api_key
 from storage import add_message, load_history, save_history
 
 
@@ -16,6 +19,7 @@ class ChatApp:
         self.root = root
         self.root.title("AI Talk Desktop")
         self.root.geometry("780x580")
+        self._set_window_icon()
 
         self.messages: list[dict] = load_history()
         self._worker_error: str | None = None
@@ -26,8 +30,34 @@ class ChatApp:
 
         self._build_ui()
         self._render_history()
+        self.root.after(100, self._ensure_api_key_configured)
+
+    def _set_window_icon(self) -> None:
+        logo_path = Path("resources") / "logo.png"
+        if not logo_path.exists():
+            return
+        try:
+            self._logo_img = tk.PhotoImage(file=str(logo_path))
+            self.root.iconphoto(True, self._logo_img)
+        except Exception:
+            # Ignore icon loading errors to keep app boot resilient.
+            pass
+
+    def _ensure_api_key_configured(self) -> None:
+        has_env_key = bool(os.environ.get("DEEPSEEK_API_KEY", "").strip())
+        has_saved_key = bool(get_saved_api_key())
+        if has_env_key or has_saved_key:
+            return
+        if messagebox.askyesno("首次配置", "未检测到 API Key。现在配置 DEEPSEEK_API_KEY 吗？"):
+            self._open_api_key_dialog()
 
     def _build_ui(self) -> None:
+        menu = tk.Menu(self.root)
+        settings_menu = tk.Menu(menu, tearoff=0)
+        settings_menu.add_command(label="设置 API Key", command=self._open_api_key_dialog)
+        menu.add_cascade(label="设置", menu=settings_menu)
+        self.root.config(menu=menu)
+
         self.chat_box = scrolledtext.ScrolledText(
             self.root,
             wrap=tk.WORD,
@@ -48,6 +78,26 @@ class ChatApp:
 
         self.clear_btn = tk.Button(bottom, text="清空", width=10, command=self._clear_history)
         self.clear_btn.pack(side=tk.LEFT)
+
+    def _open_api_key_dialog(self) -> None:
+        current = get_saved_api_key()
+        value = simpledialog.askstring(
+            "设置 API Key",
+            "请输入 DEEPSEEK_API_KEY：",
+            initialvalue=current,
+            show="*",
+            parent=self.root,
+        )
+        if value is None:
+            return
+        value = value.strip()
+        if not value:
+            if messagebox.askyesno("清空配置", "输入为空，是否清空已保存的 API Key？"):
+                set_saved_api_key("")
+                messagebox.showinfo("已清空", "已清空本地保存的 API Key。")
+            return
+        set_saved_api_key(value)
+        messagebox.showinfo("保存成功", "API Key 已保存到 resources/config.json")
 
     def _render_history(self) -> None:
         self.chat_box.configure(state=tk.NORMAL)
