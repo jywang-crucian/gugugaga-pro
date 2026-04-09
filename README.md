@@ -88,6 +88,32 @@ build.bat
 4. 点击 Compile，得到：
    - `installer-output/AI-Talk-Desktop-Setup.exe`
 
+## 发布流程
+
+每次发版建议按下面顺序执行：
+
+1. 更新代码与文档
+   - 确认功能修改完成
+   - 更新 `README.md`（功能变更、使用说明、兼容性）
+2. 本地验证
+   - 运行 `python app_desktop.py`
+   - 验证：发送消息、清空记录、API Key 配置弹窗、重启后记录恢复
+3. 构建可执行文件
+   - 执行 `build.bat`
+   - 检查产物：`dist/AI-Talk-Desktop.exe`
+4. 构建安装包
+   - 使用 Inno Setup 编译 `installer.iss`
+   - 检查产物：`installer-output/AI-Talk-Desktop-Setup.exe`
+5. 安装包验收
+   - 在干净环境安装并启动
+   - 验证桌面快捷方式、程序启动、聊天功能正常
+6. 提交与推送
+   - 提交源码（不要提交 `dist/`、`build/`、`installer-output/`）
+   - 推送到 `main`
+7. 发布记录（可选）
+   - 在 GitHub Releases 填写版本说明
+   - 附上安装包下载地址和变更摘要
+
 ## 常见问题
 
 - `No module named openai`：执行 `python -m pip install -r requirements.txt`
